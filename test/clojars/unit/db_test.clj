@@ -454,7 +454,7 @@
           '({:version "0.1", :jar_name "rock", :group_name "jester"}
             {:version "0.1", :jar_name "paper", :group_name "tester"})
           (->>
-            (db/browse-projects help/*db* 1 2)
+            (db/browse-projects help/*db* nil 1 2)
             (map #(select-keys % [:group_name :jar_name :version])))))
 
     ; tests version ordering and pagination
@@ -462,7 +462,7 @@
           '({:version "0.2", :jar_name "rock", :group_name "tester"}
             {:version "0.1", :jar_name "scissors", :group_name "tester"})
           (->>
-            (db/browse-projects help/*db* 2 2)
+            (db/browse-projects help/*db* nil 2 2)
             ( map #(select-keys % [:group_name :jar_name :version]))))))
 
 (deftest count-projects-works

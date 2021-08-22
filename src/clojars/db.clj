@@ -143,12 +143,6 @@
                                {:connection db
                                 :result-set-fn first}))
 
-(defn with-verified-group
-  [db {:as jar :keys [group_name]}]
-  (when jar
-    (assoc jar
-           :verified-group? (boolean (find-group-verification db group_name)))))
-
 (defn verify-group! [db username group-name]
   (when-not (find-group-verification db group-name)
     (sql/verify-group! {:group_name group-name
@@ -183,6 +177,16 @@
 (defn group-actives [db groupname]
   (sql/group-actives {:groupname groupname}
                      {:connection db}))
+
+(defn with-verified-group-for-member
+  "Adds a `:verified-group?` flag to the jar map if:
+  * the group for the jar is verified
+  * the given user is a member of that group"
+  [db user {:as jar :keys [group_name]}]
+  (when jar
+    (cond-> jar
+      (contains? (set (group-actives db group_name)) user)
+      (assoc :verified-group? (boolean (find-group-verification db group_name))))))
 
 (defn jars-by-username [db username]
   (sql/jars-by-username {:username username}
@@ -301,11 +305,11 @@
                               :result-set-fn first
                               :row-fn :count}))
 
-(defn browse-projects [db current-page per-page]
+(defn browse-projects [db user current-page per-page]
   (vec
    (map
     (fn [{:keys [group_name jar_name]}]
-      (with-verified-group db (find-jar db group_name jar_name)))
+      (with-verified-group-for-member db user (find-jar db group_name jar_name)))
     (all-projects db
                   (* (dec current-page) per-page)
                   per-page))))
