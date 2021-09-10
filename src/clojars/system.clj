@@ -1,26 +1,27 @@
 (ns clojars.system
   (:require
-   [clojars.email :refer [simple-mailer]]
-   [clojars.notifications :as notifications]
-   ;; for defmethods
-   [clojars.notifications.mfa]
-   [clojars.notifications.token]
-   [clojars.oauth.github :as github]
-   [clojars.oauth.gitlab :as gitlab]
-   [clojars.remote-service :as remote-service]
-   [clojars.ring-servlet-patch :as patch]
-   [clojars.s3 :as s3]
-   [clojars.search :refer [lucene-component]]
-   [clojars.stats :refer [artifact-stats]]
-   [clojars.storage :as storage]
-   [clojars.web :as web]
-   [clucy.core :as clucy]
-   [com.stuartsierra.component :as component]
-   [duct.component.endpoint :refer [endpoint-component]]
-   [duct.component.handler :refer [handler-component]]
-   [duct.component.hikaricp :refer [hikaricp]]
-   [meta-merge.core :refer [meta-merge]]
-   [ring.component.jetty :refer [jetty-server]]))
+    [clojars.email :refer [simple-mailer]]
+    [clojars.notifications :as notifications]
+    ;; for defmethods
+    [clojars.notifications.mfa]
+    [clojars.notifications.token]
+    [clojars.oauth.github :as github]
+    [clojars.oauth.gitlab :as gitlab]
+    [clojars.remote-service :as remote-service]
+    [clojars.ring-servlet-patch :as patch]
+    [clojars.s3 :as s3]
+    [clojars.search :refer [lucene-component]]
+    [clojure.set :as set]
+    [clojars.stats :refer [artifact-stats]]
+    [clojars.storage :as storage]
+    [clojars.web :as web]
+    [com.stuartsierra.component :as component]
+    [duct.component.endpoint :refer [endpoint-component]]
+    [duct.component.handler :refer [handler-component]]
+    [duct.component.hikaricp :refer [hikaricp]]
+    [meta-merge.core :refer [meta-merge]]
+    [msync.lucene.indexer :as indexer]
+    [ring.component.jetty :refer [jetty-server]]))
 
 (def base-env
   {:app {:middleware []}
@@ -61,25 +62,28 @@
 (defn new-system [config]
   (let [{:as config :keys [github-oauth gitlab-oauth]} (meta-merge base-env config)]
     (-> (component/system-map
-         :app               (handler-component (:app config))
-         :clojars-app       (endpoint-component web/clojars-app)
-         :db                (hikaricp (assoc (:db config) :max-pool-size 20))
-         :github            (github/new-github-service (:client-id github-oauth)
+          :app (handler-component (:app config))
+          :clojars-app (endpoint-component web/clojars-app)
+          :db (hikaricp (assoc (:db config) :max-pool-size 20))
+          :github (github/new-github-service (:client-id github-oauth)
                                                        (:client-secret github-oauth)
                                                        (:callback-uri github-oauth))
-         :gitlab            (gitlab/new-gitlab-service (:client-id gitlab-oauth)
+          :gitlab (gitlab/new-gitlab-service (:client-id gitlab-oauth)
                                                        (:client-secret gitlab-oauth)
                                                        (:callback-uri gitlab-oauth))
-         :http              (jetty-server (:http config))
-         :http-client       (remote-service/new-http-remote-service)
-         :index-factory     #(clucy/disk-index (:index-path config))
-         :mailer            (simple-mailer (:mail config))
-         :notifications     (notifications/notification-component)
-         :repo-bucket       (s3-bucket (:s3 config) :repo-bucket)
-         :search            (lucene-component)
-         :stats             (artifact-stats)
-         :stats-bucket      (s3-bucket (:s3 config) :stats-bucket)
-         :storage           (storage-component (:repo config) (:cdn-token config) (:cdn-url config)))
+          :http (jetty-server (:http config))
+          :http-client (remote-service/new-http-remote-service)
+          :index-factory #(indexer/create! (-> config
+                                               (set/rename-keys {:index-path :path})
+                                               (assoc :type :disk)))
+          ;; #(clucy/disk-index (:index-path config))
+          :mailer (simple-mailer (:mail config))
+          :notifications (notifications/notification-component)
+          :repo-bucket (s3-bucket (:s3 config) :repo-bucket)
+          :search (lucene-component)
+          :stats (artifact-stats)
+          :stats-bucket (s3-bucket (:s3 config) :stats-bucket)
+          :storage (storage-component (:repo config) (:cdn-token config) (:cdn-url config)))
         (component/system-using
          {:app               [:clojars-app]
           :clojars-app       [:db :github :gitlab :error-reporter :http-client

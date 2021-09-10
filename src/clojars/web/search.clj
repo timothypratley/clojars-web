@@ -38,7 +38,8 @@
                                             :results-per-page results-per-page
                                             :offset offset
                                             :results (map jar->json results)})))
-      (catch Exception _
+      (catch Exception ex
+        (.printStackTrace ex)
         (error-api/error-api-response
          {:status 400
           :format :json

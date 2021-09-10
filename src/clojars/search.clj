@@ -7,14 +7,10 @@
             [clojure
              [set :as set]
              [string :as string]]
-            [clucy.core :as clucy]
-            [com.stuartsierra.component :as component])
-  (:import [org.apache.lucene.analysis KeywordAnalyzer PerFieldAnalyzerWrapper]
-           org.apache.lucene.analysis.standard.StandardAnalyzer
-           org.apache.lucene.index.IndexNotFoundException
-           org.apache.lucene.queryParser.QueryParser
-           org.apache.lucene.search.IndexSearcher
-           [org.apache.lucene.search.function CustomScoreQuery DocValues FieldCacheSource ValueSourceQuery]))
+            [msync.lucene :as lucene]
+            [msync.lucene.document :as document]
+            [msync.lucene.analyzers :as analyzers]
+            [com.stuartsierra.component :as component]))
 
 (defprotocol Search
   (index! [t pom])
@@ -22,7 +18,6 @@
   (delete!
     [t group-id]
     [t group-id artifact-id]))
-
 
 (def content-fields [:artifact-id :group-id :version :description
                      :url #(->> % :authors (string/join " "))])
@@ -32,14 +27,14 @@
                      :version {:analyzed false}
                      :at {:analyzed false}})
 
-;; TODO: make this easy to do from clucy
-(defonce analyzer (let [a (PerFieldAnalyzerWrapper.
-                           ;; Our default analyzer has no stop words.
-                           (StandardAnalyzer. clucy/*version* #{}))]
-                    (doseq [[field {:keys [analyzed]}] field-settings
-                            :when (false? analyzed)]
-                      (.addAnalyzer a (name field) (KeywordAnalyzer.)))
-                    a))
+(defonce default-analyzer (analyzers/standard-analyzer))
+(defonce keyword-analyzer (analyzers/keyword-analyzer))
+(defonce analyzer
+  (analyzers/per-field-analyzer default-analyzer
+                                (into {}
+                                      (for [[field {:keys [analyzed]}] field-settings
+                                            :when (false? analyzed)]
+                                        [field keyword-analyzer]))))
 
 (def renames {:name       :artifact-id
               :jar_name   :artifact-id
@@ -49,9 +44,9 @@
               :homepage   :url})
 
 (defn delete-from-index [index group-id & [artifact-id]]
-  (binding [clucy/*analyzer* analyzer]
-    (clucy/search-and-delete index
-                             (cond-> (str "group-id:" group-id)
+  #_(binding [lucene/*analyzer* analyzer]
+    (lucene/search-and-delete index
+                              (cond-> (str "group-id:" group-id)
                                      artifact-id (str " AND artifact-id:" artifact-id)))))
 
 (defn update-if-exists
@@ -60,33 +55,21 @@
     (apply update m k f args)
     m))
 
-(defn index-jar [index jar]
-  (let [jar' (-> jar
-                (set/rename-keys renames)
-                (update :licenses #(mapv :name %))
-                (update-if-exists :at (memfn getTime)))
-        ;; TODO: clucy forces its own :_content on you
-        content (string/join " " ((apply juxt content-fields) jar'))
-        doc (assoc (dissoc jar' :dependencies :scm)
-                   :_content content)]
-    (binding [clucy/*analyzer* analyzer]
-      (let [[old] (try
-                    (clucy/search index (format "artifact-id:%s AND group-id:%s"
-                                                (some-> doc :artifact-id (QueryParser/escape))
-                                                (some-> doc :group-id (QueryParser/escape))) 1)
-                    (catch IndexNotFoundException _
-                      ;; This happens when the index is searched before any data
-                      ;; is added. We can treat it here as a nil return
-                      ))]
-        (if old
-          (when (< (Long. (:at old)) (:at doc))
-            (clucy/search-and-delete index (format "artifact-id:%s AND group-id:%s"
-                                                   (some-> doc :artifact-id (QueryParser/escape))
-                                                   (some-> doc :group-id (QueryParser/escape))))
-            (clucy/add index (with-meta doc field-settings)))
-          (clucy/add index (with-meta doc field-settings)))))))
+(defn jar->doc [jar]
+  (-> jar
+      (set/rename-keys renames)
+      (update :licenses #(mapv :name %))
+      (update-if-exists :at (memfn getTime))
+      (dissoc :dependencies :scm)))
 
-(defn- track-index-status
+(defn index-jar [index jar]
+  (prn "ZZZZ" jar (jar->doc jar))
+  (lucene/index! index (jar->doc jar)
+                 {:stored-fields  [:Number :Year :Album :Artist :Genre :Subgenre]
+                  :suggest-fields [:Album :Artist]
+                  :context-fn     :Genre}))
+
+#_(defn- track-index-status
   [{:keys [indexed last-time] :as status}]
   (let [status' (update status :indexed inc)]
     (if (= 0 (rem indexed 1000))
@@ -96,17 +79,27 @@
           (assoc status' :last-time next-time))
         status')))
 
+;; TODO: why do we have index construction in the system if we don't use it here?
 (defn generate-index [db]
-  (let [index-path ((config) :index-path)]
-    (printf "index-path: %s\n" index-path)
-    (with-open [index (clucy/disk-index index-path)]
+  (let [index-path ((config) :index-path)
+        _ (printf "index-path: %s\n" index-path)
+        index (lucene/create-index! :type :disk
+                                    :path index-path
+                                    :analyzer analyzer)
+        jar-data (map jar->doc (db/all-jars db))]
+    (lucene/index! index jar-data
+                   {:stored-fields  [:Number :Year :Album :Artist :Genre :Subgenre]
+                    :suggest-fields [:Album :Artist]
+                    :context-fn     :Genre})
+
+    #_(with-open [index (lucene/disk-index index-path)]
       ;; searching with an empty index creates an exception
-      (clucy/add index {:dummy true})
+      (lucene/add index {:dummy true})
       (let [{:keys [indexed start-time]}
             (reduce
               (fn [status jar]
                 (try
-                  (index-jar index jar)
+                  (jar->doc index jar)
                   (catch Exception e
                     (printf "Failed to index %s/%s:%s - %s\n" (:group_name jar) (:jar_name jar) (:version jar)
                             (.getMessage e))
@@ -120,7 +113,7 @@
         (printf "Indexing complete. Indexed %s jars in %f seconds (%f/second)\n"
                 indexed seconds (/ indexed seconds))
         (flush))
-      (clucy/search-and-delete index "dummy:true"))))
+      (lucene/search-and-delete index "dummy:true"))))
 
 
 ;; We multiply this by the fraction of total downloads an item gets to
@@ -133,7 +126,7 @@
 (def download-score-weight 50)
 
 (defn download-values [stats]
-  (let [total (stats/total-downloads stats)]
+  #_(let [total (stats/total-downloads stats)]
     (ValueSourceQuery.
      (proxy [FieldCacheSource] ["download-count"]
        (getCachedFieldValues [cache _ reader]
@@ -184,23 +177,31 @@
 
 ; http://stackoverflow.com/questions/963781/how-to-achieve-pagination-in-lucene
 (defn -search [stats index query page]
+  (prn index 'INDEX)
+  (prn query 'QUERY)
   (if (empty? query)
     []
-    (binding [clucy/*analyzer* analyzer]
+    (lucene/search index query
+                   {:page             page
+                    :results-per-page 24
+                    :hit->doc         document/document->map}))
+  #_(if (empty? query)
+    []
+    (binding [lucene/*analyzer* analyzer]
       (with-open [searcher (IndexSearcher. index)]
         (let [per-page 24
               offset (* per-page (- page 1))
-              parser (QueryParser. clucy/*version*
+              parser (QueryParser. lucene/*version*
                                    "_content"
-                                   clucy/*analyzer*)
+                                   lucene/*analyzer*)
               query  (.parse parser (replace-time-range query))
               query  (CustomScoreQuery. query (download-values stats))
               hits   (.search searcher query (* per-page page))
-              highlighter (#'clucy/make-highlighter query searcher nil)]
+              highlighter (#'lucene/make-highlighter query searcher nil)]
           (doall
            (let [dhits (take per-page (drop offset (.scoreDocs hits)))]
              (with-meta (for [hit dhits]
-                          (#'clucy/document->map
+                          (#'lucene/document->map
                            (.doc searcher (.doc hit))
                            (.score hit)
                            highlighter))
@@ -226,7 +227,8 @@
       (assoc t :index (index-factory))))
   (stop [t]
     (when index
-      (.close index))
+      ;;(.close index)
+      )
     (assoc t :index nil)))
 
 (defn lucene-component []

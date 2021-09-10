@@ -41,7 +41,9 @@
                   :exclusions [commons-codec]]
                  [valip "0.2.0"
                   :exclusions [commons-logging]]
-                 [clucy "0.3.0"]
+                 [org.msync/lucene-clj "0.2.0-SNAPSHOT"]
+                 #_[org.apache.lucene/lucene-core "8.9.0"]
+
                  [org.clojure/tools.nrepl "0.2.11"]
                  [yesql "0.5.1"]
                  [org.postgresql/postgresql "42.2.9"]
@@ -67,7 +69,7 @@
                  [org.clojure/tools.logging "1.1.0"]
                  [ch.qos.logback/logback-classic "1.3.0-alpha5"
                   :exclusions [com.sun.mail/javax.mail]]
-                 
+
                  ;; AWS
                  [com.cognitect.aws/api "0.8.408"
                   :exclusions [org.eclipse.jetty/jetty-util]]

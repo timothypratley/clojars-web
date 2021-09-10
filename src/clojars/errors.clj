@@ -38,14 +38,14 @@
                          (or (:message extra) "RavenErrorReporter capture")
                          e
                          extra))
- 
+
    Thread$UncaughtExceptionHandler
    (uncaughtException [this thread throwable]
      (raven-error-report (:dsn raven-config)
                          nil
                          "UncaughtExceptionHandler capture"
                          throwable)))
- 
+
 (defn raven-error-reporter [raven-config]
   (->RavenErrorReporter raven-config))
 

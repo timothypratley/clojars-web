@@ -1,23 +1,23 @@
 (ns clojars.test-helper
   (:require
-   [clojars.config :as config]
-   [clojars.db.migrate :as migrate]
-   [clojars.email :as email]
-   [clojars.errors :as errors]
-   [clojars.oauth.service :as oauth-service]
-   [clojars.remote-service :as remote-service]
-   [clojars.s3 :as s3]
-   [clojars.search :as search]
-   [clojars.stats :as stats]
-   [clojars.storage :as storage]
-   [clojars.system :as system]
-   [clojars.web :as web]
-   [clojure.java.io :as io]
-   [clojure.java.jdbc :as jdbc]
-   [clojure.string :as str]
-   [clucy.core :as clucy]
-   [com.stuartsierra.component :as component]
-   [clojars.db :as db])
+    [clojars.config :as config]
+    [clojars.db.migrate :as migrate]
+    [clojars.email :as email]
+    [clojars.errors :as errors]
+    [clojars.oauth.service :as oauth-service]
+    [clojars.remote-service :as remote-service]
+    [clojars.s3 :as s3]
+    [clojars.search :as search]
+    [clojars.stats :as stats]
+    [clojars.storage :as storage]
+    [clojars.system :as system]
+    [clojars.web :as web]
+    [clojure.java.io :as io]
+    [clojure.java.jdbc :as jdbc]
+    [clojure.string :as str]
+    [com.stuartsierra.component :as component]
+    [clojars.db :as db]
+    [msync.lucene.indexer :as indexer])
   (:import
    (java.io
     File)
@@ -138,7 +138,7 @@
     (binding [system (component/start (assoc (system/new-system (config/config))
                                              :repo-bucket (s3/mock-s3-client)
                                              :error-reporter (quiet-reporter)
-                                             :index-factory #(clucy/memory-index)
+                                             :index-factory #(indexer/create! {:type :memory})
                                              :mailer (email/mock-mailer)
                                              :stats (no-stats)
                                              :github (oauth-service/new-mock-oauth-service "GitHub" {})))]
