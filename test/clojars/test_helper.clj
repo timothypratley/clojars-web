@@ -130,6 +130,10 @@
 (defn app-from-system []
   (web/clojars-app system))
 
+(defn test-index-factory []
+  (indexer/create! {:type     :memory
+                    :analyzer search/analyzer}))
+
 (defn with-test-system*
   [f]
   (binding [config/*profile* "test"]
@@ -138,7 +142,7 @@
     (binding [system (component/start (assoc (system/new-system (config/config))
                                              :repo-bucket (s3/mock-s3-client)
                                              :error-reporter (quiet-reporter)
-                                             :index-factory #(indexer/create! {:type :memory})
+                                             :index-factory test-index-factory
                                              :mailer (email/mock-mailer)
                                              :stats (no-stats)
                                              :github (oauth-service/new-mock-oauth-service "GitHub" {})))]

@@ -10,7 +10,7 @@
     [clojars.remote-service :as remote-service]
     [clojars.ring-servlet-patch :as patch]
     [clojars.s3 :as s3]
-    [clojars.search :refer [lucene-component]]
+    [clojars.search :as search :refer [lucene-component]]
     [clojure.set :as set]
     [clojars.stats :refer [artifact-stats]]
     [clojars.storage :as storage]
@@ -73,9 +73,9 @@
                                                        (:callback-uri gitlab-oauth))
           :http (jetty-server (:http config))
           :http-client (remote-service/new-http-remote-service)
-          :index-factory #(indexer/create! (-> config
-                                               (set/rename-keys {:index-path :path})
-                                               (assoc :type :disk)))
+          :index-factory #(indexer/create! {:path     (:index-path config)
+                                            :type     :disk
+                                            :analyzer search/analyzer})
           ;; #(clucy/disk-index (:index-path config))
           :mailer (simple-mailer (:mail config))
           :notifications (notifications/notification-component)

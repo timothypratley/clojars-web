@@ -2,8 +2,8 @@
   (:require [cheshire.core :as json]
             [clj-http.client :as client]
             [clojars.search :as search]
-            [clojars.test-helper :as help]
             [clojure.set :as set]
+            [clojars.test-helper :as help]
             [clojure.test :refer [deftest is testing use-fixtures]]
             [clojure.xml :as xml]))
 

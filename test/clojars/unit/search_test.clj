@@ -4,7 +4,6 @@
              [stats :as stats]]
             [clojars.test-helper :as help]
             [clojure.test :refer [deftest is use-fixtures]]
-            [clucy.core :as clucy]
             [com.stuartsierra.component :as component]))
 
 (use-fixtures :once
@@ -18,16 +17,15 @@
                                                 ["lein-modules" "lein-modules"] 1}
                                                [g a]))
                                             (total-downloads [t] 100))
-                                   :index-factory #(clucy/memory-index)))
+                                   :index-factory help/test-index-factory))
         lein-ring {:artifact-id "lein-ring"
                    :group-id "lein-ring"}
         lein-modules {:artifact-id "lein-modules"
-                      :group-id "lein-modules"}]
+                      :group-id "lein-modules"}
+        c {:artifact-id "c"
+           :group-id "c"}]
     (try
-      (doseq [data [lein-ring
-                    lein-modules
-                    {:artifact-id "c"
-                     :group-id "c"}]]
+      (doseq [data [lein-ring lein-modules c]]
         (search/index! lc data))
       (is (= (map #(dissoc % :licenses) (search/search lc "lein-modules" 1))
              [lein-modules lein-ring]))
@@ -43,7 +41,7 @@
                                    :stats (reify stats/Stats
                                             (download-count [t g a] 1)
                                             (total-downloads [t] 100))
-                                   :index-factory #(clucy/memory-index)))
+                                   :index-factory help/test-index-factory))
         lein-ring {:group-id "lein-ring"}
         at-at {:group-id "at-at"}]
     (try
@@ -67,7 +65,7 @@
                                    :stats (reify stats/Stats
                                             (download-count [t g a] 1)
                                             (total-downloads [t] 100))
-                                   :index-factory #(clucy/memory-index)))
+                                   :index-factory help/test-index-factory))
         lein-ring {:artifact-id "lein-ring"}
         at-at {:artifact-id "at-at"}]
     (try
@@ -97,7 +95,7 @@
                                    :stats (reify stats/Stats
                                             (download-count [t g a] 1)
                                             (total-downloads [t] 100))
-                                   :index-factory #(clucy/memory-index)))
+                                   :index-factory help/test-index-factory))
         lein-ring {:version "1.0.0"}]
     (try
       (doseq [data [lein-ring
@@ -113,7 +111,7 @@
                                    :stats (reify stats/Stats
                                             (download-count [t g a] 1)
                                             (total-downloads [t] 100))
-                                   :index-factory #(clucy/memory-index)))
+                                   :index-factory help/test-index-factory))
         lein-ring {:description "A Leiningen plugin that automates common Ring tasks."}]
     (try
       (doseq [data [lein-ring
@@ -133,7 +131,7 @@
                                    :stats (reify stats/Stats
                                             (download-count [t g a] 1)
                                             (total-downloads [t] 100))
-                                   :index-factory #(clucy/memory-index)))
+                                   :index-factory help/test-index-factory))
         lein-ring-old {:description "lein-ring old" :at (help/date-from-iso-8601-str "2012-01-15T00:00:00Z")}
         lein-ring-new {:description "lein-ring new" :at (help/date-from-iso-8601-str "2015-01-15T00:00:00Z")}
         lib-foo       {:description "lib-foo" :at (help/date-from-iso-8601-str "2014-01-15T00:00:00Z")}]
@@ -160,7 +158,7 @@
                                    :stats (reify stats/Stats
                                             (download-count [t g a] 1)
                                             (total-downloads [t] 100))
-                                   :index-factory #(clucy/memory-index)))
+                                   :index-factory help/test-index-factory))
         lein-ring-old {:description "lein-ring old" :at (help/date-from-iso-8601-str "2012-01-15T00:00:00Z")}
         lein-ring-new {:description "lein-ring new" :at (help/date-from-iso-8601-str "2015-01-15T00:00:00Z")}
         lib-foo       {:description "lib-foo" :at (help/date-from-iso-8601-str "2014-01-15T00:00:00Z")}]
@@ -190,7 +188,7 @@
                                    :stats (reify stats/Stats
                                             (download-count [t g a] 1)
                                             (total-downloads [t] 100))
-                                   :index-factory #(clucy/memory-index)))
+                                   :index-factory help/test-index-factory))
         lein-ring {:group-id "lein-ring"
                    :artifact-id "lein-ring"}
         another-lein-ring {:group-id "lein-ring"
@@ -208,7 +206,7 @@
                                    :stats (reify stats/Stats
                                             (download-count [t g a] 1)
                                             (total-downloads [t] 100))
-                                   :index-factory #(clucy/memory-index)))
+                                   :index-factory help/test-index-factory))
         lein-ring {:group-id "lein-ring"
                    :artifact-id "lein-ring"}
         another-lein-ring {:group-id "lein-ring"

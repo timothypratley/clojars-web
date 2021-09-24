@@ -10,7 +10,8 @@
             [msync.lucene :as lucene]
             [msync.lucene.document :as document]
             [msync.lucene.analyzers :as analyzers]
-            [com.stuartsierra.component :as component]))
+            [com.stuartsierra.component :as component]
+            [msync.lucene.indexer :as indexer]))
 
 (defprotocol Search
   (index! [t pom])
@@ -19,8 +20,13 @@
     [t group-id]
     [t group-id artifact-id]))
 
-(def content-fields [:artifact-id :group-id :version :description
-                     :url #(->> % :authors (string/join " "))])
+(def content-fields [:artifact-id :group-id :version :description :url #(->> % :authors (string/join " "))])
+
+(def doc-opts
+  {:stored-fields  content-fields
+   ;;:suggest-fields [:artifact-id]
+   ;;:context-fn     :group-id
+   })
 
 (def field-settings {:artifact-id {:analyzed false}
                      :group-id {:analyzed false}
@@ -31,10 +37,11 @@
 (defonce keyword-analyzer (analyzers/keyword-analyzer))
 (defonce analyzer
   (analyzers/per-field-analyzer default-analyzer
-                                (into {}
-                                      (for [[field {:keys [analyzed]}] field-settings
-                                            :when (false? analyzed)]
-                                        [field keyword-analyzer]))))
+                                {}
+                                #_ (into {}
+                                         (for [[field {:keys [analyzed]}] field-settings
+                                               :when (false? analyzed)]
+                                           [field keyword-analyzer]))))
 
 (def renames {:name       :artifact-id
               :jar_name   :artifact-id
@@ -63,11 +70,9 @@
       (dissoc :dependencies :scm)))
 
 (defn index-jar [index jar]
-  (prn "ZZZZ" jar (jar->doc jar))
-  (lucene/index! index (jar->doc jar)
-                 {:stored-fields  [:Number :Year :Album :Artist :Genre :Subgenre]
-                  :suggest-fields [:Album :Artist]
-                  :context-fn     :Genre}))
+  (prn "INDEX-JAR" jar)
+  (let [doc (jar->doc jar)]
+    (lucene/index! index [doc] doc-opts)))
 
 #_(defn- track-index-status
   [{:keys [indexed last-time] :as status}]
@@ -83,14 +88,11 @@
 (defn generate-index [db]
   (let [index-path ((config) :index-path)
         _ (printf "index-path: %s\n" index-path)
-        index (lucene/create-index! :type :disk
-                                    :path index-path
-                                    :analyzer analyzer)
+        index (indexer/create! {:type     :disk
+                                :path     index-path
+                                :analyzer analyzer})
         jar-data (map jar->doc (db/all-jars db))]
-    (lucene/index! index jar-data
-                   {:stored-fields  [:Number :Year :Album :Artist :Genre :Subgenre]
-                    :suggest-fields [:Album :Artist]
-                    :context-fn     :Genre})
+    (lucene/index! index jar-data doc-opts)
 
     #_(with-open [index (lucene/disk-index index-path)]
       ;; searching with an empty index creates an exception
@@ -177,14 +179,14 @@
 
 ; http://stackoverflow.com/questions/963781/how-to-achieve-pagination-in-lucene
 (defn -search [stats index query page]
-  (prn index 'INDEX)
-  (prn query 'QUERY)
-  (if (empty? query)
+  (if (string/blank? query)
     []
-    (lucene/search index query
-                   {:page             page
-                    :results-per-page 24
-                    :hit->doc         document/document->map}))
+    (doto (lucene/search index
+                         {:artifact-id query}
+                         { ;;:page             page
+                          :results-per-page 24
+                          :hit->doc         document/document->map})
+      (prn "RESULT")))
   #_(if (empty? query)
     []
     (binding [lucene/*analyzer* analyzer]
